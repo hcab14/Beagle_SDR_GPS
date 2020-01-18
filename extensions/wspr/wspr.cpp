@@ -28,6 +28,8 @@
 #include "wspr.h"
 #include "shmem.h"
 
+#include <algorithm>
+
 static const unsigned char pr3[NSYM_162] = {
     1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1,
     1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0,
@@ -220,15 +222,13 @@ void sync_and_demodulate(WSPR_CPX_t *id, WSPR_CPX_t *qd, long np,
 }
 
 void renormalize(wspr_t *w, float psavg[], float smspec[], float tmpsort[]) {
-  int i, j, k;
-
   // smooth with 7-point window and limit the spectrum to +/-150 Hz
   int window[7] = {1, 1, 1, 1, 1, 1, 1};
 
-  for (i = 0; i < nbins_411; i++) {
+  for (int i = 0; i < nbins_411; i++) {
     smspec[i] = 0.0;
-    for (j = -3; j <= 3; j++) {
-      k = SPS - hbins_205 + i + j;
+    for (int j = -3; j <= 3; j++) {
+      int const k = SPS - hbins_205 + i + j;
       if (k < NFFT) smspec[i] += window[j + 3] * psavg[k];
       WSPR_CHECK(
           else lprintf("WSPR WARNING! renormalize: k=%d i=%d j=%d\n", k, i, j);)
@@ -237,12 +237,16 @@ void renormalize(wspr_t *w, float psavg[], float smspec[], float tmpsort[]) {
   WSPR_SHMEM_YIELD;
 
   // Sort spectrum values, then pick off noise level as a percentile
-  for (j = 0; j < nbins_411; j++) tmpsort[j] = smspec[j];
+  for (int j = 0; j < nbins_411; j++) tmpsort[j] = smspec[j];
+#if 0
   qsort(tmpsort, nbins_411, sizeof(float), qsort_floatcomp);
+#else
+  std::nth_element(tmpsort, tmpsort+122, tmpsort+nbins_411);
+#endif
   WSPR_SHMEM_YIELD;
 
   // Noise level of spectrum is estimated as 123/411= 30'th percentile
-  float noise_level = tmpsort[122];
+  float const noise_level = tmpsort[122];
 
   /* Renormalize spectrum so that (large) peaks represent an estimate of snr.
    * We know from experience that threshold snr is near -7dB in wspr bandwidth,
@@ -251,7 +255,7 @@ void renormalize(wspr_t *w, float psavg[], float smspec[], float tmpsort[]) {
    */
   w->min_snr = pow(10.0, -7.0 / 10.0);  // this is min snr in wspr bw
   w->snr_scaling_factor = (w->wspr_type == WSPR_TYPE_2MIN) ? 26.3 : 35.3;
-  for (j = 0; j < 411; j++) {
+  for (int j = 0; j < 411; j++) {
     smspec[j] = smspec[j] / noise_level - 1.0;
     if (smspec[j] < w->min_snr) smspec[j] = 0.1 * w->min_snr;
   }

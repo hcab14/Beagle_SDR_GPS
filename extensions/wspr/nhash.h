@@ -3,7 +3,7 @@
 #include "types.h"
 
 #include <stddef.h>
-#include <stdint.h>	/* defines uint32_t etc */
+#include <stdint.h> /* defines uint32_t etc */
 
 #ifdef __cplusplus
 extern "C" {

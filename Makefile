@@ -53,10 +53,10 @@ ifeq ($(DEBIAN_DEVSYS),$(DEBIAN))
 	endif
 else
 	# choices when building on development machine
-	BBAI = true
-#	BBAI = false
-	DEBIAN_7 = false
-	MAKE_ARGS = -j
+	# BBAI,DEBIAN_7 are taken from the mounted KiwiSDR root file system
+	#BBAI = false
+	#DEBIAN_7 = false
+	MAKE_ARGS = -j 7
 endif
 
 ARCH = sitara
@@ -167,12 +167,12 @@ CFILES = $(subst web/web.cpp,,$(CPP_F))
 CFILES_O3 = $(subst web/web.cpp,,$(CPP_F_O3))
 
 ifeq ($(DEBIAN_DEVSYS),$(DEVSYS))
-	# development machine, compile simulation version
-	LIBS += -L/usr/local/lib -lfftw3f -lfftw3
-	LIBS_DEP += /usr/local/lib/libfftw3f.a /usr/local/lib/libfftw3.a
+	LIBS += -lfftw3f -lfftw3 -lutil
 	CMD_DEPS =
-	DIR_CFG = unix_env/kiwi.config
-	CFG_PREFIX = dist.
+	DIR_CFG = /root/kiwi.config
+	CFG_PREFIX =
+	#DIR_CFG = unix_env/kiwi.config
+	#CFG_PREFIX = dist.
 
 else
 	# host machine (BBB), only build the FPGA-using version

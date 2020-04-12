@@ -31,19 +31,33 @@ CFLAGS_UNSAFE_OPT = -funsafe-math-optimizations
 
 # devsys
 ifeq ($(DEBIAN_DEVSYS),$(DEVSYS))
-	CFLAGS += -DDEVSYS
-
 	ifeq ($(UNAME),Darwin)
 		CC = clang
 		CPP = clang++
 		CPP_FLAGS += -std=gnu++11
 	else
-		# try clang on your development system (if you have it) -- it's better
-		#CC = clang
-		#CPP = clang++
-	
-		CC = gcc
-		CPP = g++
+		# Headers+libraries from a KiwiSDR are needed for cross-compilation with clang
+		# For this mount the KiwiSDR's root file system:
+		#   sshfs -oro,follow_symlinks,auto_cache,reconnect root@kiwisdr:/ mnt
+	        REMOTE=$(shell pwd)/mnt
+	        BBAI = $(shell cat $(REMOTE)/proc/device-tree/model | grep -q -s "BeagleBone AI" && echo true)
+	        DEBIAN_7 = $(shell cat $(REMOTE)/etc/debian_version | grep -q -s "7\." && echo true)
+	        CC = clang
+	        CPP = clang++
+	        CPP_FLAGS += -std=gnu++11
+	        CFLAGS += --target=armv7a-linux-gnueabihf
+	        CFLAGS += -mfpu=neon
+	        CFLAGS += -mfloat-abi=hard -mcpu=cortex-a8
+	        CFLAGS += --sysroot=$(REMOTE)
+	        CFLAGS += -I$(REMOTE)/usr/include/c++/4.9
+	        CFLAGS += -I$(REMOTE)/usr/include/arm-linux-gnueabihf/c++/4.9
+	        CFLAGS += -Ofast
+	        CFLAGS += -DHOST
+	        LDFLAGS += -fuse-ld=lld
+	        LDFLAGS += --sysroot=$(REMOTE)
+	        LDFLAGS += --target=armv7a-linux-gnueabihf
+	        LDFLAGS += -L$(REMOTE)/usr/lib/arm-linux-gnueabihf
+	        LDFLAGS += -L$(REMOTE)/usr/local/lib/
 	endif
 endif
 
@@ -72,12 +86,12 @@ ifeq ($(DEBIAN_DEVSYS),$(DEBIAN))
             CPP = g++
             CFLAGS += -pg -fprofile-arcs -ftest-coverage
             LDFLAGS += -pg -lgcov --coverage
-		    VIS_OPT =
-		    BUILD_OBJ = ./kiwi.bin
-		else
+            VIS_OPT =
+            BUILD_OBJ = ./kiwi.bin
+	else
             CC = clang-7
             CPP = clang++-7
-		    VIS_OPT = -Ofast
+            VIS_OPT = -Ofast
         endif
 		# needed for iq_display.cpp et al
 		CPP_FLAGS += -std=gnu++11

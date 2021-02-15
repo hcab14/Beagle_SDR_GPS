@@ -60,6 +60,7 @@ ifeq ($(DEBIAN_DEVSYS),$(DEVSYS))
         CFLAGS += -mfpu=neon
         CFLAGS += -mfloat-abi=hard
         CFLAGS += --sysroot=$(KIWI_XC_REMOTE_FS)
+        CFLAGS += --gcc-toolchain=$(KIWI_XC_REMOTE_FS)/usr ## avoid picking up a local GCC toolchain
         CFLAGS += -I$(KIWI_XC_REMOTE_FS)/usr/include/c++/4.9
         CFLAGS += -I$(KIWI_XC_REMOTE_FS)/usr/include/arm-linux-gnueabihf/c++/4.9
         CFLAGS += -DHOST

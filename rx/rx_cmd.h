@@ -26,3 +26,11 @@ enum rx_common_cmd_key_e {
     CMD_OVERRIDE, CMD_NOCACHE, CMD_CTRACE, CMD_DEBUG_VAL, CMD_DEBUG_MSG, CMD_IS_ADMIN,
     CMD_GET_AUTHKEY, CMD_CLK_ADJ, CMD_SERVER_DE_CLIENT, CMD_X_DEBUG
 };
+
+#define CMD_FREQ                0x01
+#define CMD_MODE                0x02
+#define CMD_PASSBAND            0x04
+#define CMD_AGC                 0x08
+#define CMD_AR_OK               0x10
+#define CMD_ALL                 (CMD_FREQ | CMD_MODE | CMD_PASSBAND | CMD_AGC | CMD_AR_OK)
+

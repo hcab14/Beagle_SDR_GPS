@@ -58,6 +58,9 @@ Boston, MA  02110-1301, USA.
  #include "DRM.h"
 #endif
 
+#include "rx_cmd.h"
+#include "parse_and_execute_cmd.h"
+
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -130,15 +133,6 @@ void c2s_sound_init()
     }
 }
 
-#define CMD_FREQ                0x01
-#define CMD_MODE                0x02
-#define CMD_PASSBAND            0x04
-#define CMD_AGC                 0x08
-#define CMD_AR_OK               0x10
-#define CMD_ALL                 (CMD_FREQ | CMD_MODE | CMD_PASSBAND | CMD_AGC | CMD_AR_OK)
-
-#define LOOP_BC 1024
-
 void c2s_sound_setup(void *param)
 {
     conn_t *conn = (conn_t *) param;
@@ -161,7 +155,7 @@ void c2s_sound(void *param)
     rx_dpump_t *rx = &rx_dpump[rx_chan];
     iq_buf_t *iq = &RX_SHMEM->iq_buf[rx_chan];
 
-    int j, k, n, len, slen;
+    int len, slen;
     //static u4_t ncnt[MAX_RX_CHANS];
     const char *s;
 
@@ -273,12 +267,27 @@ void c2s_sound(void *param)
             //printf("SND%d freq updated due to ADC clock correction\n", rx_chan);
         }
 
-        if (nb) web_to_app_done(conn, nb);
-        n = web_to_app(conn, &nb);
+        if (nb) {
+            web_to_app_done(conn, nb);
+        }
 
+        int n = web_to_app(conn, &nb);
         if (n) {
             char *cmd = nb->buf;
             cmd[n] = 0;             // okay to do this -- see nbuf.c:nbuf_allocq()
+
+#if 1
+            parse_and_execute_cmd(conn, &snd_cmd_hash, cmd,
+                                  change_freq_mode, cmd_recv, masked, change_LPF, mode, freq, chan_null,
+                                  compression, restart, little_endian,
+                                  squelch, squelch_on_seq, tail_delay,
+                                  sq_init, squelched,
+                                  nb_algo, nr_algo,
+                                  nb_enable, nr_enable,
+                                  nb_param, nr_param,
+                                  mute, de_emp);
+            continue;
+#else
 
             TaskStat(TSTAT_INCR|TSTAT_ZERO, 0, "cmd");
 
@@ -306,12 +315,14 @@ void c2s_sound(void *param)
 
             switch (key) {
 
-            case CMD_AUDIO_START:
-                n = sscanf(cmd, "SET dbgAudioStart=%d", &k);
+            case CMD_AUDIO_START: {
+                int k = 0;
+                n = sscanf(cmd, "SET dbgAudioStart=%d", &k); // value k not used?
                 if (n == 1) {
                     did_cmd = true;
                 }
                 break;
+            }
 
             case CMD_TUNE: {
                 char *mode_m = NULL;
@@ -433,7 +444,7 @@ void c2s_sound(void *param)
                         int pb_lo = f + locut;
                         int pb_hi = f + hicut;
                         //printf("SND f=%d lo=%.0f|%d hi=%.0f|%d ", f, locut, pb_lo, hicut, pb_hi);
-                        for (j=0; j < dx.masked_len; j++) {
+                        for (int j=0; j < dx.masked_len; j++) {
                             dx_t *dxp = &dx.list[dx.masked_idx[j]];
                             if (!((pb_hi < dxp->masked_lo || pb_lo > dxp->masked_hi))) {
                                 masked = true;
@@ -691,8 +702,9 @@ void c2s_sound(void *param)
                 }
                 break;
 
-            case CMD_UNDERRUN:
-                n = sscanf(cmd, "SET underrun=%d", &j);
+            case CMD_UNDERRUN: {
+                int j;
+                int n = sscanf(cmd, "SET underrun=%d", &j);
                 if (n == 1) {
                     did_cmd = true;
                     conn->audio_underrun++;
@@ -702,7 +714,7 @@ void c2s_sound(void *param)
                     //  ev_dump/1000.0));
                 }
                 break;
-
+            }
             #ifdef SND_SEQ_CHECK
             case CMD_SEQ: {
                 int _seq, _sequence;
@@ -752,6 +764,7 @@ void c2s_sound(void *param)
             }
 
             continue;       // keep checking until no cmds in queue
+#endif
         } // if (n)
 
         check(nb == NULL);
@@ -1023,7 +1036,7 @@ void c2s_sound(void *param)
             // delay updating iq_wr_pos until after AGC applied below
 
             TYPECPX *f_sa = f_samps;
-            for (j=0; j<ns_out; j++) {
+            for (int j=0; j<ns_out; j++) {
 
                 // S-meter from CuteSDR
                 // FIXME: Why is SND_MAX_VAL less than CUTESDR_MAX_VAL again?
@@ -1064,7 +1077,7 @@ void c2s_sound(void *param)
 
                 TYPEREAL *d_samps = rx->demod_samples;
 
-                for (j=0; j<ns_out; j++) {
+                for (int j=0; j<ns_out; j++) {
                     float pwr = a_samps->re*a_samps->re + a_samps->im*a_samps->im;
                     float mag = sqrt(pwr);
                     #define DC_ALPHA 0.99f
@@ -1114,7 +1127,7 @@ void c2s_sound(void *param)
                 conn->last_sample = a_samps[ns_out-1];
                 a_samps++; d_samps++;
 
-                for (j=1; j < ns_out; j++) {
+                for (int j=1; j < ns_out; j++) {
                     i = a_samps->re, q = a_samps->im;
                     iL = a_samps[-1].re, qL = a_samps[-1].im;
                     *d_samps = SND_MAX_VAL * fmdemod_quadri_K * (i*(q-qL) - q*(i-iL)) / (i*i + q*q);
@@ -1261,7 +1274,7 @@ void c2s_sound(void *param)
 
                 if (little_endian) {
                     bc = ns_out * NIQ * sizeof(s2_t);
-                    for (j=0; j < ns_out; j++) {
+                    for (int j=0; j < ns_out; j++) {
                         // can cast TYPEREAL directly to s2_t due to choice of CUTESDR_SCALE
                         s2_t re = (s2_t) cp->re, im = (s2_t) cp->im;
                         *bp_iq_s2++ = re;      // arm native little-endian (put any swap burden on client)
@@ -1269,7 +1282,7 @@ void c2s_sound(void *param)
                         cp++;
                     }
                 } else {
-                    for (j=0; j < ns_out; j++) {
+                    for (int j=0; j < ns_out; j++) {
                         // can cast TYPEREAL directly to s2_t due to choice of CUTESDR_SCALE
                         s2_t re = (s2_t) cp->re, im = (s2_t) cp->im;
                         *bp_iq_u1++ = (re >> 8) & 0xff; bc++;  // choose a network byte-order (big-endian)
@@ -1304,11 +1317,11 @@ void c2s_sound(void *param)
                     // can cast TYPEREAL directly to s2_t due to choice of CUTESDR_SCALE
                     if (little_endian) {
                         bc += ns_out * sizeof(s2_t);
-                        for (j=0; j < ns_out; j++) {
+                        for (int j=0; j < ns_out; j++) {
                             *bp_real_s2++ = *r_samps++;    // arm native little-endian (put any swap burden on client)
                         }
                     } else {
-                        for (j=0; j < ns_out; j++) {
+                        for (int j=0; j < ns_out; j++) {
                             *bp_real_u1++ = (*r_samps >> 8) & 0xff; bc++;       // choose a network byte-order (big-endian)
                             *bp_real_u1++ = (*r_samps >> 0) & 0xff; bc++;
                             r_samps++;
@@ -1345,12 +1358,12 @@ void c2s_sound(void *param)
                     // non-zero to keep FF silence detector from being tripped
                     if (little_endian) {
                         bc += pkt_remain * NIQ * sizeof(s2_t);
-                        for (j=0; j < pkt_remain; j++) {
+                        for (int j=0; j < pkt_remain; j++) {
                             *bp_iq_s2++ = 0x1;     // arm native little-endian (put any swap burden on client)
                             *bp_iq_s2++ = 0x1;
                         }
                     } else {
-                        for (j=0; j < pkt_remain; j++) {
+                        for (int j=0; j < pkt_remain; j++) {
                             *bp_iq_u1++ = 0; bc++;     // choose a network byte-order (big-endian)
                             *bp_iq_u1++ = 1; bc++;
                             *bp_iq_u1++ = 0; bc++;
@@ -1364,14 +1377,14 @@ void c2s_sound(void *param)
 
                         if (little_endian) {
                             bc += samps * NIQ * sizeof(s2_t);
-                            for (j=0; j < samps; j++) {
+                            for (int j=0; j < samps; j++) {
                                 *bp_iq_s2++ = o_samps->left;   // arm native little-endian (put any swap burden on client)
                                 *bp_iq_s2++ = o_samps->right;
                                 o_samps++;
                                 pkt_remain--;
                             }
                         } else {
-                            for (j=0; j < samps; j++) {
+                            for (int j=0; j < samps; j++) {
                                 *bp_iq_u1++ = (o_samps->left >> 8) & 0xff; bc++;    // choose a network byte-order (big-endian)
                                 *bp_iq_u1++ = (o_samps->left >> 0) & 0xff; bc++;
                                 *bp_iq_u1++ = (o_samps->right >> 8) & 0xff; bc++;
